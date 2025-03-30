@@ -50,17 +50,24 @@ func (i *Importer) getCSVData(csvPath string) (io.Reader, error) {
 		return os.Open(csvPath)
 	}
 
-	// If we're using the default path and the file doesn't exist, download it
-	if csvPath == config.DefaultFeedsCSVPath {
-		log.Info().Str("url", config.RemoteFeedsURL).Msg("Local CSV file not found. Downloading from remote source")
-		return i.downloadCSV(config.RemoteFeedsURL)
+	// If the file doesn't exist and we have a remote URL, download it
+	if config.RemoteFeedsURL != "" {
+		log.Info().Str("url", config.RemoteFeedsURL).Str("path", csvPath).Msg("Local CSV file not found. Downloading from remote source")
+
+		// Download the CSV file
+		reader, err := i.downloadCSV(config.RemoteFeedsURL, csvPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to download CSV file: %w", err)
+		}
+
+		return reader, nil
 	}
 
 	return nil, fmt.Errorf("CSV file not found: %s", csvPath)
 }
 
-func (i *Importer) downloadCSV(url string) (io.Reader, error) {
-	log.Debug().Str("url", url).Msg("Downloading CSV file")
+func (i *Importer) downloadCSV(url string, savePath string) (io.Reader, error) {
+	log.Debug().Str("url", url).Str("savePath", savePath).Msg("Downloading CSV file")
 
 	resp, err := http.Get(url)
 	if err != nil {
@@ -72,6 +79,39 @@ func (i *Importer) downloadCSV(url string) (io.Reader, error) {
 		return nil, fmt.Errorf("failed to download file: HTTP status %d", resp.StatusCode)
 	}
 
+	// If a save path is provided, save the file there
+	if savePath != "" {
+		// Create the file
+		outFile, err := os.Create(savePath)
+		if err != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("failed to create file %s: %w", savePath, err)
+		}
+
+		// Copy the response body to both the file and a buffer
+		bodyData, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			outFile.Close()
+			return nil, err
+		}
+
+		bytesWritten, err := outFile.Write(bodyData)
+		outFile.Close()
+		if err != nil {
+			return nil, err
+		}
+
+		log.Debug().
+			Int("bytes", bytesWritten).
+			Str("path", savePath).
+			Msg("Downloaded and saved CSV file")
+
+		// Return a reader for the downloaded data
+		return strings.NewReader(string(bodyData)), nil
+	}
+
+	// If no save path is provided, return the response body directly
 	// Create a temporary file to store the downloaded content
 	tempFile, err := os.CreateTemp("", "feeds-*.csv")
 	if err != nil {
