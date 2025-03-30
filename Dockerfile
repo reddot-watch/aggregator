@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build with optimizations, CGO enabled for SQLite
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o aggregator .
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o aggregator ./cmd/aggregator
 
 # Runtime stage
 FROM alpine:3.19
