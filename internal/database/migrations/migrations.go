@@ -2,14 +2,17 @@ package migrations
 
 import (
 	"database/sql"
+	"embed"
 	"fmt"
-	"os"
-	"path/filepath"
+	"io/fs"
 	"sort"
 	"strings"
 
 	"github.com/rs/zerolog/log"
 )
+
+//go:embed sql/*.sql
+var migrationFS embed.FS
 
 // Migration represents a database migration
 type Migration struct {
@@ -18,12 +21,13 @@ type Migration struct {
 	Down    string
 }
 
-// LoadMigrations loads all migration files from the migrations directory
-func LoadMigrations(migrationsDir string) ([]Migration, error) {
+// LoadMigrations loads all migration files from the embedded filesystem
+func LoadMigrations() ([]Migration, error) {
 	var migrations []Migration
-	entries, err := os.ReadDir(migrationsDir)
+
+	entries, err := fs.ReadDir(migrationFS, "sql")
 	if err != nil {
-		return nil, fmt.Errorf("failed to read migrations directory: %w", err)
+		return nil, fmt.Errorf("failed to read embedded migrations: %w", err)
 	}
 
 	// Group files by version
@@ -50,15 +54,15 @@ func LoadMigrations(migrationsDir string) ([]Migration, error) {
 			continue
 		}
 
-		content, err := os.ReadFile(filepath.Join(migrationsDir, name))
+		content, err := fs.ReadFile(migrationFS, "sql/"+name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read migration file %s: %w", name, err)
 		}
 
 		v := versionFiles[version]
-		if strings.HasSuffix(direction, ".up.sql") {
+		if strings.HasSuffix(direction, "up.sql") {
 			v.up = string(content)
-		} else if strings.HasSuffix(direction, ".down.sql") {
+		} else if strings.HasSuffix(direction, "down.sql") {
 			v.down = string(content)
 		}
 		versionFiles[version] = v

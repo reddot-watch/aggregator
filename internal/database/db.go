@@ -88,8 +88,9 @@ func NewDB(cfg *Config) (*DB, error) {
 
 	if !cfg.ReadOnly {
 		log.Info().Msg("Running database migrations...")
-		migrationsDir := filepath.Join("internal", "database", "migrations")
-		migrationFiles, err := migrations.LoadMigrations(migrationsDir)
+
+		// Load migrations from embedded files
+		migrationFiles, err := migrations.LoadMigrations()
 		if err != nil {
 			db.Close()
 			return nil, fmt.Errorf("failed to load migrations: %w", err)
