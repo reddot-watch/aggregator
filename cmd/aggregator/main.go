@@ -87,9 +87,17 @@ func main() {
 	addFeedCmd.StringVar(&addFeedLogLevelStr, "log-level", config.GetEnvString("AGGREGATOR_LOG_LEVEL", config.DefaultLogLevel),
 		"Log level: debug, info, warn, error (env: AGGREGATOR_LOG_LEVEL)")
 
+	resetFeedsCmd := flag.NewFlagSet("reset-feeds", flag.ExitOnError)
+	resetFeedsCmd.StringVar(&cfg.DBPath, "db", config.GetEnvString("AGGREGATOR_DB_PATH", config.DefaultDBPath),
+		"Path to the SQLite database file (env: AGGREGATOR_DB_PATH)")
+
+	var resetFeedsLogLevelStr string
+	resetFeedsCmd.StringVar(&resetFeedsLogLevelStr, "log-level", config.GetEnvString("AGGREGATOR_LOG_LEVEL", config.DefaultLogLevel),
+		"Log level: debug, info, warn, error (env: AGGREGATOR_LOG_LEVEL)")
+
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: aggregator [command] [options]")
-		fmt.Println("Commands: import, start, server, add-feed")
+		fmt.Println("Commands: import, start, server, add-feed, reset-feeds")
 		fmt.Println("\nFor command-specific options, use: aggregator [command] -h")
 		os.Exit(1)
 	}
@@ -156,21 +164,37 @@ func main() {
 
 		zerolog.SetGlobalLevel(cfg.LogLevel)
 
-		err := runAdd(cfg)
+		err := runAddFeed(cfg)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to add feed")
 			os.Exit(1)
 		}
 
+	case "reset-feeds":
+		resetFeedsCmd.Parse(os.Args[2:])
+
+		// Handle log level parsing separately
+		if level, err := zerolog.ParseLevel(resetFeedsLogLevelStr); err == nil {
+			cfg.LogLevel = level
+		}
+
+		zerolog.SetGlobalLevel(cfg.LogLevel)
+
+		err := runResetFeeds(cfg)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to reset feeds")
+			os.Exit(1)
+		}
+
 	case "-h", "--help", "help":
 		fmt.Println("Usage: aggregator [command] [options]")
-		fmt.Println("Commands: import, start, server, add-feed")
+		fmt.Println("Commands: import, start, server, add-feed, reset-feeds")
 		fmt.Println("\nFor command-specific options, use: aggregator [command] -h")
 		os.Exit(0)
 
 	default:
 		log.Error().Str("command", os.Args[1]).Msg("Unknown command")
-		fmt.Println("Available commands: import, start, server, add-feed")
+		fmt.Println("Available commands: import, start, server, add-feed, reset-feeds")
 		fmt.Println("\nFor command-specific options, use: aggregator [command] -h")
 		os.Exit(1)
 	}
@@ -353,8 +377,8 @@ func runServer(cfg *config.Config) error {
 	return server.RunServer(db, cfg.ListenAddr(), log.Logger, cfg.APIKey)
 }
 
-// runAdd adds a single feed to the database
-func runAdd(cfg *config.Config) error {
+// runAddFeed adds a single feed to the database
+func runAddFeed(cfg *config.Config) error {
 	if cfg.FeedURL == "" {
 		return fmt.Errorf("feed URL is required")
 	}
@@ -399,6 +423,48 @@ func runAdd(cfg *config.Config) error {
 		Str("url", feed.URL).
 		Str("language", feed.Language.String).
 		Msg("Successfully added new feed")
+
+	return nil
+}
+
+// runResetFeeds resets all feeds in the database to active status
+func runResetFeeds(cfg *config.Config) error {
+	// Validate database exists
+	if _, err := os.Stat(cfg.DBPath); err != nil {
+		return fmt.Errorf("database not found at %s: %w", cfg.DBPath, err)
+	}
+
+	// Initialize database connection
+	dbCfg := database.NewConfig(cfg.DBPath)
+	db, err := database.NewDB(dbCfg)
+	if err != nil {
+		return fmt.Errorf("failed to initialize database: %w", err)
+	}
+	defer db.Close()
+
+	// Reset all feeds to active status
+	now := time.Now()
+	result, err := db.Exec(`
+		UPDATE feeds
+		SET status = 'active', 
+			failures_count = 0, 
+			last_error = NULL, 
+			updated_at = ?
+		WHERE deleted_at IS NULL
+	`, now.Format("2006-01-02 15:04:05"))
+
+	if err != nil {
+		return fmt.Errorf("failed to reset feeds: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	log.Info().
+		Int64("updated_feeds", rowsAffected).
+		Msg("Successfully reset feeds to active status")
 
 	return nil
 }
