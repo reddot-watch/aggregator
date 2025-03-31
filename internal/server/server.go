@@ -18,6 +18,31 @@ import (
 	"github.com/rs/zerolog/hlog"
 )
 
+// apiKeyMiddleware checks for the X-API-Key header and validates it against the SERVER_API_KEY environment variable.
+// If SERVER_API_KEY is not set, it allows all requests.
+func apiKeyMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiKey := os.Getenv("SERVER_API_KEY")
+		if apiKey == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		reqApiKey := r.Header.Get("X-API-Key")
+		if reqApiKey == "" {
+			http.Error(w, "API key required", http.StatusUnauthorized)
+			return
+		}
+
+		if reqApiKey != apiKey {
+			http.Error(w, "Invalid API key", http.StatusUnauthorized)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 // RunServer starts the HTTP server with graceful shutdown support.
 // It sets up routes, middleware, and handles OS signals for clean termination.
 func RunServer(db *database.DB, listenAddr string, logger zerolog.Logger) error {
@@ -50,6 +75,8 @@ func RunServer(db *database.DB, listenAddr string, logger zerolog.Logger) error 
 			Str("req_id", idReq.String()).
 			Msg("HTTP Request")
 	})(h)
+
+	h = apiKeyMiddleware(h)
 
 	httpServer := &http.Server{
 		Addr:              listenAddr,
