@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"database/sql"
+	"encoding/csv"
 	"errors"
 	"net/http"
 	"os"
@@ -55,6 +57,7 @@ func RunServer(db *database.DB, listenAddr string, logger zerolog.Logger, apiKey
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/feed-items", feedItemsHandler.GetFeedItems)
+	mux.HandleFunc("GET /v1/feeds", exportFeedsHandler(db))
 	mux.HandleFunc("GET /health", healthCheckHandler)
 
 	// Set up middleware chain for logging and request tracking
@@ -155,4 +158,93 @@ func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		log.Debug().Int("bytes_written", n).Msg("Health check response sent")
 	}
+}
+
+// exportFeedsHandler returns a handler function that exports all feeds as a CSV file
+func exportFeedsHandler(db *database.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log := hlog.FromRequest(r)
+		log.Debug().Msg("Export feeds request received")
+
+		if r.Method != http.MethodGet {
+			log.Warn().Str("method", r.Method).Msg("Export feeds method not allowed")
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Query all active feeds
+		rows, err := db.Query(`
+			SELECT url, comments, language, status
+			FROM feeds
+			WHERE deleted_at IS NULL
+			ORDER BY id ASC
+		`)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to query feeds")
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", "attachment; filename=feeds.csv")
+
+		csvWriter := csv.NewWriter(w)
+
+		header := []string{"url", "comments", "language", "status"}
+		if err := csvWriter.Write(header); err != nil {
+			log.Error().Err(err).Msg("Failed to write CSV header")
+			http.Error(w, "Error generating CSV", http.StatusInternalServerError)
+			return
+		}
+
+		var count int
+		for rows.Next() {
+			var url, status string
+			var comments, language sql.NullString
+
+			err := rows.Scan(&url, &comments, &language, &status)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to scan feed row")
+				continue
+			}
+
+			record := []string{
+				url,
+				nullStringValue(comments),
+				nullStringValue(language),
+				status,
+			}
+
+			if err := csvWriter.Write(record); err != nil {
+				log.Error().Err(err).Msg("Failed to write CSV record")
+				http.Error(w, "Error generating CSV", http.StatusInternalServerError)
+				return
+			}
+
+			count++
+		}
+
+		if err := rows.Err(); err != nil {
+			log.Error().Err(err).Msg("Error iterating feed rows")
+			http.Error(w, "Error reading feeds", http.StatusInternalServerError)
+			return
+		}
+
+		csvWriter.Flush()
+		if err := csvWriter.Error(); err != nil {
+			log.Error().Err(err).Msg("Error flushing CSV data")
+			return
+		}
+
+		log.Info().Int("feed_count", count).Msg("Exported feeds as CSV")
+	}
+}
+
+// nullStringValue returns the string value of a sql.NullString or an empty string if not valid
+func nullStringValue(ns sql.NullString) string {
+	if ns.Valid {
+		return ns.String
+	}
+	return ""
 }
