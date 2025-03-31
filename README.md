@@ -56,6 +56,22 @@ Imports feeds from a CSV file into the database. The CSV should have columns for
 
 If no CSV file is specified, the aggregator will default to using the global news feed list from [Reddot Watch Curated World News](https://github.com/reddot-watch/curated-world-news).
 
+### Add Single Feed
+
+```bash
+./aggregator add-feed -db feeds.db -url https://example.com/feed.xml [-language en] [-comments "Optional description"]
+```
+
+Adds a single feed to the database. Required parameters:
+- `-db`: Path to the SQLite database file
+- `-url`: The feed URL to add
+
+Optional parameters:
+- `-language`: The feed language (defaults to "en")
+- `-comments`: Description or notes about the feed
+
+The feed will be added with status="active" by default.
+
 ### Start Processing
 
 ```bash

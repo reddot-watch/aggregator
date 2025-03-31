@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"flag"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"reddot-watch/aggregator/internal/config"
 	"reddot-watch/aggregator/internal/database"
 	importfeeds "reddot-watch/aggregator/internal/import"
+	"reddot-watch/aggregator/internal/models"
 	"reddot-watch/aggregator/internal/process"
 	"reddot-watch/aggregator/internal/server"
 )
@@ -74,9 +76,20 @@ func main() {
 	serverCmd.StringVar(&serverLogLevelStr, "log-level", config.GetEnvString("AGGREGATOR_LOG_LEVEL", config.DefaultLogLevel),
 		"Log level: debug, info, warn, error (env: AGGREGATOR_LOG_LEVEL)")
 
+	addFeedCmd := flag.NewFlagSet("add-feed", flag.ExitOnError)
+	addFeedCmd.StringVar(&cfg.DBPath, "db", config.GetEnvString("AGGREGATOR_DB_PATH", config.DefaultDBPath),
+		"Path to the SQLite database file (env: AGGREGATOR_DB_PATH)")
+	addFeedCmd.StringVar(&cfg.FeedURL, "url", "", "URL of the feed to add")
+	addFeedCmd.StringVar(&cfg.FeedLanguage, "language", "en", "Language of the feed (default: en)")
+	addFeedCmd.StringVar(&cfg.FeedComments, "comments", "", "Comments or description about the feed")
+
+	var addFeedLogLevelStr string
+	addFeedCmd.StringVar(&addFeedLogLevelStr, "log-level", config.GetEnvString("AGGREGATOR_LOG_LEVEL", config.DefaultLogLevel),
+		"Log level: debug, info, warn, error (env: AGGREGATOR_LOG_LEVEL)")
+
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: aggregator [command] [options]")
-		fmt.Println("Commands: import, start, server")
+		fmt.Println("Commands: import, start, server, add-feed")
 		fmt.Println("\nFor command-specific options, use: aggregator [command] -h")
 		os.Exit(1)
 	}
@@ -133,15 +146,31 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "add-feed":
+		addFeedCmd.Parse(os.Args[2:])
+
+		// Handle log level parsing separately
+		if level, err := zerolog.ParseLevel(addFeedLogLevelStr); err == nil {
+			cfg.LogLevel = level
+		}
+
+		zerolog.SetGlobalLevel(cfg.LogLevel)
+
+		err := runAdd(cfg)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to add feed")
+			os.Exit(1)
+		}
+
 	case "-h", "--help", "help":
 		fmt.Println("Usage: aggregator [command] [options]")
-		fmt.Println("Commands: import, start, server")
+		fmt.Println("Commands: import, start, server, add-feed")
 		fmt.Println("\nFor command-specific options, use: aggregator [command] -h")
 		os.Exit(0)
 
 	default:
 		log.Error().Str("command", os.Args[1]).Msg("Unknown command")
-		fmt.Println("Available commands: import, start, server")
+		fmt.Println("Available commands: import, start, server, add-feed")
 		fmt.Println("\nFor command-specific options, use: aggregator [command] -h")
 		os.Exit(1)
 	}

@@ -23,6 +23,11 @@ type Config struct {
 	Interval      time.Duration
 	RetentionDays int
 
+	// Feed settings
+	FeedURL      string
+	FeedLanguage string
+	FeedComments string
+
 	// Log settings
 	LogLevel zerolog.Level
 }
@@ -40,6 +45,7 @@ func DefaultConfig() *Config {
 		WorkerCount:   DefaultWorkerCount,
 		Interval:      time.Duration(DefaultInterval) * time.Minute,
 		RetentionDays: DefaultRetentionDays,
+		FeedLanguage:  "en",
 		LogLevel:      logLevel,
 	}
 }
