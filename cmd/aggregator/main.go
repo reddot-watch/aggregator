@@ -67,6 +67,9 @@ func main() {
 	serverCmd.IntVar(&cfg.ServerPort, "port", config.GetEnvInt("AGGREGATOR_PORT", config.DefaultServerPort),
 		"Port to listen on (env: AGGREGATOR_PORT)")
 
+	serverCmd.StringVar(&cfg.APIKey, "api-key", config.GetEnvString("AGGREGATOR_API_KEY", ""),
+		"API key for authentication (env: AGGREGATOR_API_KEY)")
+
 	var serverLogLevelStr string
 	serverCmd.StringVar(&serverLogLevelStr, "log-level", config.GetEnvString("AGGREGATOR_LOG_LEVEL", config.DefaultLogLevel),
 		"Log level: debug, info, warn, error (env: AGGREGATOR_LOG_LEVEL)")
@@ -318,5 +321,55 @@ func runServer(cfg *config.Config) error {
 	}
 	defer db.Close()
 
-	return server.RunServer(db, cfg.ListenAddr(), log.Logger)
+	return server.RunServer(db, cfg.ListenAddr(), log.Logger, cfg.APIKey)
+}
+
+// runAdd adds a single feed to the database
+func runAdd(cfg *config.Config) error {
+	if cfg.FeedURL == "" {
+		return fmt.Errorf("feed URL is required")
+	}
+
+	// Validate database exists
+	if _, err := os.Stat(cfg.DBPath); err != nil {
+		return fmt.Errorf("database not found at %s: %w", cfg.DBPath, err)
+	}
+
+	// Initialize database connection
+	dbCfg := database.NewConfig(cfg.DBPath)
+	db, err := database.NewDB(dbCfg)
+	if err != nil {
+		return fmt.Errorf("failed to initialize database: %w", err)
+	}
+	defer db.Close()
+
+	// Check if feed already exists
+	var count int
+	err = db.Get(&count, "SELECT COUNT(*) FROM feeds WHERE url = ?", cfg.FeedURL)
+	if err != nil {
+		return fmt.Errorf("failed to check for existing feed: %w", err)
+	}
+	if count > 0 {
+		return fmt.Errorf("feed with URL %s already exists", cfg.FeedURL)
+	}
+
+	// Create new feed
+	feed := models.NewFeed()
+	feed.URL = cfg.FeedURL
+	feed.Language = sql.NullString{String: cfg.FeedLanguage, Valid: true}
+	if cfg.FeedComments != "" {
+		feed.Comments = sql.NullString{String: cfg.FeedComments, Valid: true}
+	}
+
+	// Insert feed
+	if err := db.InsertFeed(feed); err != nil {
+		return fmt.Errorf("failed to insert feed: %w", err)
+	}
+
+	log.Info().
+		Str("url", feed.URL).
+		Str("language", feed.Language.String).
+		Msg("Successfully added new feed")
+
+	return nil
 }

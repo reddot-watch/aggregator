@@ -16,6 +16,7 @@ type Config struct {
 	// Server settings
 	ServerHost string
 	ServerPort int
+	APIKey     string
 
 	// Processing settings
 	WorkerCount   int
@@ -35,6 +36,7 @@ func DefaultConfig() *Config {
 		DBPath:        DefaultDBPath,
 		ServerHost:    DefaultServerHost,
 		ServerPort:    DefaultServerPort,
+		APIKey:        GetEnvString("AGGREGATOR_API_KEY", ""),
 		WorkerCount:   DefaultWorkerCount,
 		Interval:      time.Duration(DefaultInterval) * time.Minute,
 		RetentionDays: DefaultRetentionDays,

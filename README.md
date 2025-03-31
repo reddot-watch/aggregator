@@ -84,6 +84,16 @@ You can:
 
 Starts the HTTP API server that provides access to the aggregated feed items.
 
+Optional parameters:
+- `-api-key`: API key for authentication (env: AGGREGATOR_API_KEY)
+  - If set, requires the `X-API-Key` header in all requests
+  - If not set, no authentication is required
+
+Example with API key:
+```bash
+./aggregator server -api-key your-secret-key
+```
+
 ## API Reference
 
 The aggregator provides a REST API that serves feed items with pagination support.
@@ -201,6 +211,7 @@ The following environment variables can be customized when running the container
 | `AGGREGATOR_INTERVAL` | Processing interval in minutes | `15` |
 | `AGGREGATOR_RETENTION_DAYS` | Days to keep items | `3` |
 | `AGGREGATOR_LOG_LEVEL` | Logging level | `info` |
+| `AGGREGATOR_API_KEY` | API key for authentication | `""` (disabled) |
 
 Example with multiple custom settings:
 ```bash
@@ -285,6 +296,7 @@ The aggregator supports configuration through both environment variables and com
 | `AGGREGATOR_DB_PATH` | Path to the SQLite database file | `./feeds.db`          |
 | `AGGREGATOR_HOST` | Host to bind the server to | `""` (all interfaces) |
 | `AGGREGATOR_PORT` | Port to listen on | `8080`                |
+| `AGGREGATOR_API_KEY` | API key for authentication | `""` (disabled)       |
 | `AGGREGATOR_WORKER_COUNT` | Number of worker goroutines for processing (0 = CPU count) | `0`                   |
 | `AGGREGATOR_INTERVAL` | Interval in minutes between processing runs | `15`                  |
 | `AGGREGATOR_RETENTION_DAYS` | Number of days to retain feed items | `3`                   |
@@ -332,6 +344,7 @@ Each subcommand supports specific flags:
 | `-db` | Path to the SQLite database file | `AGGREGATOR_DB_PATH` |
 | `-host` | Host to bind to | `AGGREGATOR_HOST` |
 | `-port` | Port to listen on | `AGGREGATOR_PORT` |
+| `-api-key` | API key for authentication | `AGGREGATOR_API_KEY` |
 | `-log-level` | Log level | `AGGREGATOR_LOG_LEVEL` |
 
 
