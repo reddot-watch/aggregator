@@ -51,6 +51,7 @@ const (
 	limitPerPage    = 100             // How many items to fetch per API call
 	overlapDelta    = 2 * time.Minute // Fetch items since (last_processed - delta)
 	retentionHours  = 72              // Used for initial 'since' if no state
+	serverApiKey    = ""              // API key for server authentication (empty means no auth)
 
 	// Retry configuration
 	maxRetries     = 3                      // Maximum number of retry attempts
@@ -269,7 +270,7 @@ func pollAndProcess(client *http.Client, logger *log.Logger, stateDB *StateDB) e
 			// This client only simulates publishing.
 
 			// Simulate publishing to an event bus
-			logger.Printf("  Publishing item ID %d (URL: %s, Created: %s)", item.ID, item.URL, item.CreatedAt.Format(time.RFC3339))
+			// logger.Printf("  Publishing item ID %d (URL: %s, Created: %s)", item.ID, item.URL, item.CreatedAt.Format(time.RFC3339))
 			publishToEventBus(item) // Placeholder
 
 			// Track the latest timestamp processed for the *next* cycle's 'since'
@@ -367,6 +368,11 @@ func fetchItems(ctx context.Context, client *http.Client, reqURL string, logger 
 		return apiResp, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
+
+	// Add API key header if configured
+	if serverApiKey != "" {
+		req.Header.Set("X-API-Key", serverApiKey)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
